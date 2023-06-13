@@ -1,4 +1,4 @@
-# 一键安装 Python 脚本
+# Python环境一键安装脚本，适用于Linux
 
 这是一个用于在 Linux 系统上一键安装 Python 的脚本。该脚本使用 curl 或 wget 命令从 GitHub 下载并执行，可以帮助你快速安装 Python。
 
