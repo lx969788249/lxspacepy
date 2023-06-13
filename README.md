@@ -7,25 +7,25 @@
 ### 1. 复制以下命令并在终端中运行：
 
 ```shell
-curl -O https://github.com/lx969788249/lxspacepy/blob/master/pyinstall.sh && chmod x pyinstall.sh && ./pyinstall.sh
+curl -O https://raw.githubusercontent.com/lx969788249/lxspacepy/master/pyinstall.sh && chmod +x pyinstall.sh && ./pyinstall.sh
 ```
 
 国内：
 
 ```shell
-curl -O https://raw.githubusercontent.com/lx969788249/lxspacepy/blob/master/pyinstall.sh && chmod x pyinstall.sh && ./pyinstall.sh
+curl -O https://ghproxy.com/https://raw.githubusercontent.com/lx969788249/lxspacepy/master/pyinstall.sh && chmod +x pyinstall.sh && ./pyinstall.sh
 ```
 
 或者使用 `wget` 命令：
 
 ```shell
-wget --no-check-certificate https://github.com/lx969788249/lxspacepy/blob/master/pyinstall.sh && chmod +x pyinstall.sh && ./pyinstall.sh
+wget --no-check-certificate https://raw.githubusercontent.com/lx969788249/lxspacepy/master/pyinstall.sh && chmod +x pyinstall.sh && ./pyinstall.sh
 ```
 
 国内：
 
 ```shell
-wget --no-check-certificate https://raw.githubusercontent.com/lxspacepy/blob/master/pyinstall.sh && chmod +x pyinstall.sh && ./pyinstall.sh
+wget --no-check-certificate https://ghproxy.com/https://raw.githubusercontent.com/lx969788249/lxspacepy/master/pyinstall.sh && chmod +x pyinstall.sh && ./pyinstall.sh
 ```
 
 
