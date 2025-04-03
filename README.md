@@ -10,24 +10,12 @@
 curl -O https://raw.githubusercontent.com/lx969788249/lxspacepy/master/pyinstall.sh && chmod +x pyinstall.sh && ./pyinstall.sh
 ```
 
-国内：
-
-```shell
-curl -O https://ghproxy.com/https://raw.githubusercontent.com/lx969788249/lxspacepy/master/pyinstall.sh && chmod +x pyinstall.sh && ./pyinstall.sh
-```
 
 或者使用 `wget` 命令：
 
 ```shell
 wget --no-check-certificate https://raw.githubusercontent.com/lx969788249/lxspacepy/master/pyinstall.sh && chmod +x pyinstall.sh && ./pyinstall.sh
 ```
-
-国内：
-
-```shell
-wget --no-check-certificate https://ghproxy.com/https://raw.githubusercontent.com/lx969788249/lxspacepy/master/pyinstall.sh && chmod +x pyinstall.sh && ./pyinstall.sh
-```
-
 
 
 ### 2. 按照提示进行操作
