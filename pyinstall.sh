@@ -66,6 +66,7 @@ cat << END
     2.查看已经安装的python
     3.修改默认python
     4.卸载python
+    请输入你的选择：
 END
 
 read parameter
