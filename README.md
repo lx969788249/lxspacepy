@@ -11,10 +11,10 @@ curl -O https://raw.githubusercontent.com/lx969788249/lxspacepy/master/pyinstall
 ```
 
 
-或者使用 `wget` 命令：
+国内：
 
 ```shell
-wget --no-check-certificate https://raw.githubusercontent.com/lx969788249/lxspacepy/master/pyinstall.sh && chmod +x pyinstall.sh && ./pyinstall.sh
+curl -O https://gh-proxy.com/raw.githubusercontent.com/lx969788249/lxspacepy/master/pyinstall.sh && chmod +x pyinstall.sh && ./pyinstall.sh
 ```
 
 
