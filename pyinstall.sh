@@ -1,251 +1,402 @@
 #!/bin/bash
-# Python版本管理器 (最终优化版)
-# 功能：安装、查看、切换默认、卸载 (支持菜单选择)
+# Python 版本管理器 (增强修复版)
 
-# 0. 预先检查 Root 权限
-if [ "$(id -u)" != "0" ]; then
-    echo -e "\033[31m错误: 该脚本需要 Root 权限运行。\033[0m"
-    echo "请使用 sudo $0 或切换到 root 用户后重试。"
+set -o pipefail
+
+# 0. 权限检查
+if [ "$(id -u)" -ne 0 ]; then
+    echo "错误：请使用 root 权限运行本脚本（例如：sudo $0）"
     exit 1
 fi
 
-# --- 函数定义区域 ---
+# 0.1 基础环境检查（基于 Debian/Ubuntu）
+for cmd in dpkg-query apt-get update-alternatives wget tar; do
+    if ! command -v "$cmd" >/dev/null 2>&1; then
+        echo "错误：未找到命令 $cmd，本脚本仅支持 Debian/Ubuntu 且需要该命令。"
+        exit 1
+    fi
+done
 
-# 检查并安装依赖
-function Supportlibraries()
-{
-    echo "正在检查并安装系统依赖..."
-    # 常用构建依赖
-    local libs=(build-essential libncurses5-dev libgdbm-dev libnss3-dev libssl-dev libreadline-dev libffi-dev zlib1g-dev make)
-    
-    # 建议更新 apt 索引，防止找不到包
-    # apt update -y > /dev/null 2>&1
+# --- 动画函数：带退出码传递 ---
+show_spinner() {
+    local pid="$1"
+    local delay=0.1
+    local spinstr='|/-\'
+    local hide_cursor=0
 
-    for lib in ${libs[@]}; do
-        # 使用 dpkg -s 检查安装状态可能更准确，但在脚本中 dpkg-query 足够快
-        if [ `dpkg-query -l | grep $lib | wc -l` -eq "0" ]; then
-             echo "正在安装: $lib ..."
-             apt install $lib -y &> /dev/null
-             if [ $? -eq 0 ]; then echo "  - $lib 安装成功"; else echo "  - $lib 安装失败"; fi
-        else
-             echo "  - $lib 已存在"
+    if [ -t 1 ] && command -v tput >/dev/null 2>&1; then
+        hide_cursor=1
+        tput civis
+    fi
+
+    while kill -0 "$pid" 2>/dev/null; do
+        local temp=${spinstr#?}
+        printf " [%c]  " "$spinstr"
+        spinstr=$temp${spinstr%"$temp"}
+        sleep "$delay"
+        printf "\b\b\b\b\b\b"
+    done
+
+    if [ "$hide_cursor" -eq 1 ]; then
+        tput cnorm
+    fi
+
+    printf "      \b\b\b\b\b\b"
+
+    # 返回被监控进程的退出码
+    wait "$pid"
+    return $?
+}
+
+# --- 核心逻辑：获取系统自带版本 (用于隐藏) ---
+get_system_hidden_pkg() {
+    local real_path
+    if command -v python3 >/dev/null 2>&1; then
+        real_path=$(readlink -f "$(command -v python3)" 2>/dev/null || command -v python3)
+        basename "$real_path"
+    else
+        echo "none"
+    fi
+}
+
+# --- 核心逻辑：获取用户手动安装的APT版本 (过滤掉 minimal/dev 等杂项) ---
+get_safe_apt_list() {
+    local sys_hidden="$1"
+    local pkg
+    local candidates
+
+    candidates=$(dpkg-query -W -f='${binary:Package}\n' 2>/dev/null | grep -E '^python[0-9]+\.[0-9]+$' || true)
+
+    for pkg in $candidates; do
+        if [ "$pkg" != "$sys_hidden" ]; then
+            echo "$pkg"
         fi
     done
 }
 
-# --- 主程序循环 ---
+# --- 安装依赖 ---
+CheckDeps() {
+    local libs=(build-essential libncurses5-dev libgdbm-dev libnss3-dev libssl-dev libreadline-dev libffi-dev zlib1g-dev make)
+    local missing=()
+    local lib
+
+    for lib in "${libs[@]}"; do
+        if ! dpkg-query -W -f='${Status}' "$lib" 2>/dev/null | grep -q "install ok installed"; then
+            missing+=("$lib")
+        fi
+    done
+
+    if [ "${#missing[@]}" -gt 0 ]; then
+        echo "将安装缺失的依赖：${missing[*]}"
+        if ! apt-get update; then
+            echo "错误：apt-get update 失败，请检查网络或软件源配置。"
+            return 1
+        fi
+        if ! DEBIAN_FRONTEND=noninteractive apt-get install -y "${missing[@]}"; then
+            echo "错误：依赖安装失败，请检查网络或软件源配置。"
+            return 1
+        fi
+    else
+        echo "系统依赖已满足。"
+    fi
+
+    return 0
+}
+
 while true; do
     clear
+    # 获取要隐藏的系统版本名
+    sys_hidden=$(get_system_hidden_pkg)
+
     cat << END
-==========================================================
-           Python 多版本管理器 (Linux)
-==========================================================
-    1. 安装 Python (在线下载编译)
-    2. 查看已安装版本
-    3. 修改系统默认 Python (Alternatives)
-    4. 卸载 Python (菜单选择)
+================================
+      Python 版本管理器
+================================
+    1. 安装 python
+    2. 查看已安装python
+    3. 修改默认 python
+    4. 卸载 python
     0. 退出
-==========================================================
+================================
 END
-    
-    read -p "    请输入你的选择 [0-4]: " parameter
-    echo "" 
+
+    read -p "    请选择 [0-4]: " parameter
+    echo ""
 
     case "$parameter" in
         1)
-            # === 安装功能 ===
+            # --- 安装 ---
             echo "提示：可访问 https://www.python.org/ftp/python 查看版本号"
-            read -p "请输入要安装的版本号 (例如: 3.9.9): " version
-            
+            read -p "请输入安装版本号 (如 3.9.9): " version
+
             if [ -z "$version" ]; then
-                echo "错误：版本号不能为空！"
+                echo "未输入版本号，已返回主菜单。"
             else
-                # 解析版本号
-                v=(${version//./ })
-                install_path="/usr/local/python-$version"
-                
-                # 路径定义
-                python_path="$install_path/bin/python${v[0]}.${v[1]}"
-                python_bin_path="/usr/bin/python${v[0]}.${v[1]}.${v[2]}" # 这里的软连接名稍微有点长，保留原逻辑
-                pip_path="$install_path/bin/pip${v[0]}.${v[1]}"
-                pip_bin_path="/usr/bin/pip${v[0]}.${v[1]}.${v[2]}"
-
-                if [ -d "$install_path" ]; then
-                    echo -e "\033[31m检测到 Python $version 已存在 ($install_path)，无需重复安装。\033[0m"
+                if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+                    echo "版本号格式不正确，请输入类似 3.9.9 的完整三段版本号。"
                 else
-                    echo -e "准备安装版本：\033[33m$version\033[0m"
-                    Supportlibraries
-                    
-                    # 下载
-                    dl_success=0
-                    if [ ! -e "./Python-$version.tgz" ]; then
-                        echo "正在下载源码包..."
-                        # -q --show-progress 显示进度条
-                        wget -q --show-progress https://www.python.org/ftp/python/$version/Python-$version.tgz
-                        if [ "$?" -eq "0" ]; then
-                            dl_success=1
-                        else
-                            echo -e "\033[31m下载失败，请检查版本号是否存在或网络连接。\033[0m"
-                        fi
+                    echo "正在检查系统依赖..."
+                    if ! CheckDeps; then
+                        echo "依赖检查/安装失败，无法继续安装 Python。"
                     else
-                        echo "使用本地已存在的安装包。"
-                        dl_success=1
-                    fi
-
-                    # 编译安装
-                    if [ "$dl_success" -eq "1" ]; then
-                        echo "正在解压与编译 (这可能需要几分钟，请耐心等待)..."
-                        tar -zxf Python-$version.tgz
-                        cd Python-$version
-                        
-                        # 编译配置
-                        ./configure --prefix=$install_path > /dev/null
-                        # 使用多核编译
-                        make -j$(nproc) > /dev/null && make install > /dev/null
-                        
-                        cd ..
-                        
-                        # 创建软连接
-                        # 注意：原脚本的逻辑是创建非常具体的版本号软连，这里保持一致
-                        ln -sf $python_path $python_bin_path
-                        ln -sf $pip_path $pip_bin_path
+                        install_path="/usr/local/python-$version"
+                        IFS='.' read -r major minor patch <<< "$version"
 
                         if [ -d "$install_path" ]; then
-                            echo -e "\033[32mPython $version 安装成功！\033[0m"
-                            echo "安装路径：$install_path"
-                            
-                            # 添加到 alternatives 管理
-                            # 优先级设为 1，避免自动覆盖系统自带版本，除非用户手动切换
-                            update-alternatives --install /usr/bin/python python $python_path 1
-                            
-                            # 尝试升级 pip
-                            echo "正在升级 pip..."
-                            $install_path/bin/pip3 install --upgrade pip &> /dev/null
+                            echo "该版本已存在，无需重复安装。安装目录：$install_path"
                         else
-                            echo -e "\033[31m编译安装似乎失败了，目录未生成。\033[0m"
+                            workdir=$(pwd)
+                            build_dir="/tmp/python-build-$version-$$"
+                            mkdir -p "$build_dir"
+                            cd "$build_dir" || {
+                                echo "切换工作目录失败。"
+                                cd "$workdir"
+                                continue
+                            }
+
+                            echo "正在下载源码包..."
+                            wget --progress=bar:force:noscroll "https://www.python.org/ftp/python/$version/Python-$version.tgz"
+                            if [ $? -ne 0 ] || [ ! -f "Python-$version.tgz" ]; then
+                                echo "下载失败，请检查版本号或网络连接。"
+                                cd "$workdir"
+                                rm -rf "$build_dir"
+                                continue
+                            fi
+
+                            echo "正在解压..."
+                            if ! tar -zxf "Python-$version.tgz"; then
+                                echo "解压失败。"
+                                cd "$workdir"
+                                rm -rf "$build_dir"
+                                continue
+                            fi
+
+                            cd "Python-$version" || {
+                                echo "进入源码目录失败。"
+                                cd "$workdir"
+                                rm -rf "$build_dir"
+                                continue
+                            }
+
+                            echo -n "1/3 正在配置环境... "
+                            if ./configure --prefix="$install_path" > /tmp/python-configure.log 2>&1; then
+                                echo "完成"
+                            else
+                                echo "失败 (详见 /tmp/python-configure.log)"
+                                cd "$workdir"
+                                rm -rf "$build_dir"
+                                continue
+                            fi
+
+                            echo "2/3 正在编译源码 (可能需要 5-20 分钟)..."
+                            echo -n "    编译中 "
+                            make -j"$(nproc 2>/dev/null || echo 1)" > /tmp/python-make.log 2>&1 &
+                            build_pid=$!
+                            show_spinner "$build_pid"
+                            build_status=$?
+
+                            if [ "$build_status" -ne 0 ]; then
+                                echo "失败 (详见 /tmp/python-make.log)"
+                                cd "$workdir"
+                                rm -rf "$build_dir"
+                                continue
+                            else
+                                echo "完成"
+                            fi
+
+                            echo "3/3 正在安装文件 (可能需要数分钟)..."
+                            echo -n "    安装中 "
+                            make altinstall > /tmp/python-install.log 2>&1 &
+                            install_pid=$!
+                            show_spinner "$install_pid"
+                            install_status=$?
+
+                            if [ "$install_status" -ne 0 ]; then
+                                echo "失败 (详见 /tmp/python-install.log)"
+                                cd "$workdir"
+                                rm -rf "$build_dir"
+                                continue
+                            else
+                                echo "完成"
+                            fi
+
+                            cd "$workdir"
+                            rm -rf "$build_dir"
+
+                            # 创建版本专用软链，便于识别
+                            ln -sf "$install_path/bin/python${major}.${minor}" "/usr/bin/python${major}.${minor}.${patch}"
+                            if [ -x "$install_path/bin/pip${major}.${minor}" ]; then
+                                ln -sf "$install_path/bin/pip${major}.${minor}" "/usr/bin/pip${major}.${minor}.${patch}"
+                            fi
+
+                            # 注册到 update-alternatives
+                            update-alternatives --install /usr/bin/python python "$install_path/bin/python${major}.${minor}" 1
+
+                            echo -n "正在升级 pip... "
+                            if "$install_path/bin/python${major}.${minor}" -m pip install --upgrade pip --no-warn-script-location >/dev/null 2>&1; then
+                                echo "完成"
+                            else
+                                echo "失败（可稍后手动执行：$install_path/bin/python${major}.${minor} -m pip install --upgrade pip）"
+                            fi
+
+                            echo ""
+                            echo "Python $version 安装成功！安装目录：$install_path"
                         fi
                     fi
                 fi
             fi
             ;;
-            
         2)
-            # === 查看功能 ===
-            echo "---------------------------------------"
-            echo "【已安装的自定义版本】:"
-            # 扫描目录
-            installed_list=$(ls -d /usr/local/python-* 2>/dev/null)
-            if [ -z "$installed_list" ]; then
-                echo "  (暂无)"
-            else
-                for dir in $installed_list; do
-                    ver_num=$(basename "$dir" | sed 's/python-//')
-                    echo "  - Python $ver_num  ($dir)"
-                done
+            # --- 查看已安装python ---
+            echo "--- 已安装 Python 版本列表 ---"
+            count=0
+
+            # 1. 扫描编译安装
+            mapfile -t compiled_list < <(ls -d /usr/local/python-* 2>/dev/null || true)
+            for p in "${compiled_list[@]}"; do
+                ver=$(basename "$p" | sed 's/python-//')
+                echo "  Python $ver (源码安装)"
+                ((count++))
+            done
+
+            # 2. 扫描APT安装 (调用严格过滤函数)
+            mapfile -t apt_list < <(get_safe_apt_list "$sys_hidden" || true)
+            for pkg in "${apt_list[@]}"; do
+                if [ -n "$pkg" ]; then
+                    echo "  $pkg (APT 安装)"
+                    ((count++))
+                fi
+            done
+
+            if [ "$count" -eq 0 ]; then
+                echo "  (暂无手动安装的版本)"
             fi
-            
+
             echo ""
-            echo "【当前环境 python 命令指向】:"
-            if command -v python &> /dev/null; then
-                curr_ver=$(python --version 2>&1)
-                curr_path=$(which python)
-                # 检查是否是软连接
-                if [ -L "$curr_path" ]; then
-                    real_path=$(readlink -f "$curr_path")
-                    echo "  $curr_ver (路径: $curr_path -> $real_path)"
-                else
-                    echo "  $curr_ver (路径: $curr_path)"
-                fi
-            else
-                echo "  (未找到 python 命令)"
-            fi
-            echo "---------------------------------------"
+            echo "--- 当前默认版本 ---"
+            python --version 2>/dev/null || echo "无 (可能未配置 /usr/bin/python)"
             ;;
-            
         3)
-            # === 切换默认版本 ===
-            echo "正在调用 alternatives 配置工具..."
-            if update-alternatives --query python &>/dev/null; then
-                update-alternatives --config python
+            # --- 修改默认 ---
+            echo "正在获取可用版本列表..."
+            mapfile -t alt_list < <(update-alternatives --list python 2>/dev/null || true)
+
+            if [ "${#alt_list[@]}" -eq 0 ]; then
+                echo "错误：未检测到多版本配置。"
+                echo "请先使用选项 1 安装一个新版本。"
             else
-                echo "系统未配置 alternatives，或只有一个版本。"
-                echo "请先安装新版本后再尝试切换。"
-            fi
-            ;;
-            
-        4)
-            # === 卸载功能 (重点优化) ===
-            # 1. 获取所有已安装版本到数组
-            # ls -d 获取路径，awk提取版本号
-            raw_versions=($(ls -d /usr/local/python-* 2>/dev/null | awk -F'python-' '{print $2}'))
-            
-            if [ ${#raw_versions[@]} -eq 0 ]; then
-                echo "提示：当前没有检测到通过本脚本安装的 Python 版本，无法卸载。"
-            else
-                echo "检测到以下已安装版本："
-                echo "------------------------"
-                i=1
-                # 循环显示菜单
-                for ver in "${raw_versions[@]}"; do
-                    echo "  $i) Python $ver"
-                    let i++
+                echo -n "当前默认 python: "
+                python --version 2>/dev/null || echo "无"
+
+                echo "可用版本："
+                idx=1
+                for p in "${alt_list[@]}"; do
+                    real_ver=$("$p" --version 2>&1 | awk '{print $2}')
+                    echo "  $idx) Python $real_ver ($p)"
+                    ((idx++))
                 done
-                echo "  0) 取消操作"
-                echo "------------------------"
-                
-                read -p "请输入序号选择要卸载的版本: " selection
-                
-                # 验证输入是否为数字
-                if [[ ! "$selection" =~ ^[0-9]+$ ]]; then
-                     echo "输入错误，请输入数字。"
-                elif [ "$selection" -eq "0" ]; then
-                     echo "操作已取消。"
-                elif [ "$selection" -gt "${#raw_versions[@]}" ]; then
-                     echo "输入序号超出范围。"
-                else
-                    # 获取数组中的版本号 (数组下标从0开始，所以 selection-1)
-                    target_ver=${raw_versions[$selection-1]}
-                    target_dir="/usr/local/python-$target_ver"
-                    
-                    echo ""
-                    echo -e "\033[31m警告：即将卸载 Python $target_ver \033[0m"
-                    echo "这将删除: $target_dir 及相关软连接。"
-                    read -p "确认要继续吗? [y/N]: " confirm
-                    
-                    if [[ "$confirm" =~ ^[yY]$ ]]; then
-                        echo "正在卸载..."
-                        # 删除目录
-                        rm -rf "$target_dir"
-                        
-                        # 删除软连接 (尝试删除常见的几种命名方式)
-                        rm -f "/usr/bin/python$target_ver"
-                        rm -f "/usr/bin/pip$target_ver"
-                        
-                        # 从 alternatives 移除 (需要找到具体的 bin 路径)
-                        # 这里的路径构造要和安装时保持一致，或者直接用通配符尝试移除
-                        # 最稳妥的方式是尝试移除 alternatives 中注册的路径
-                        # 我们构建一个大概率的路径：
-                        possible_bin="$target_dir/bin/python${target_ver%.*}" # 取前两位版本号 例如 3.9
-                        update-alternatives --remove python "$possible_bin" &>/dev/null
-                        
-                        echo "卸载完毕!"
+                echo "  0) 取消"
+
+                read -p "请输入序号切换: " selection
+
+                if [[ "$selection" =~ ^[0-9]+$ ]] && [ "$selection" -gt 0 ] && [ "$selection" -le "${#alt_list[@]}" ]; then
+                    target_path=${alt_list[$((selection-1))]}
+                    if update-alternatives --set python "$target_path" >/dev/null 2>&1; then
+                        echo ""
+                        echo "切换成功！当前 python："
+                        python --version 2>/dev/null || echo "未知"
                     else
-                        echo "已取消卸载。"
+                        echo "切换失败，请检查 update-alternatives 配置。"
                     fi
+                elif [ "$selection" -eq 0 ] 2>/dev/null; then
+                    echo "已取消。"
+                else
+                    echo "无效输入。"
                 fi
             fi
             ;;
-            
+        4)
+            # --- 卸载 ---
+            # 1. 获取编译版列表
+            mapfile -t src_list < <(ls -d /usr/local/python-* 2>/dev/null || true)
+
+            # 2. 获取APT版列表
+            mapfile -t clean_apt_list < <(get_safe_apt_list "$sys_hidden" || true)
+
+            total_count=$(( ${#src_list[@]} + ${#clean_apt_list[@]} ))
+
+            if [ "$total_count" -eq 0 ]; then
+                echo "未发现可卸载的 Python 版本。"
+            else
+                echo "已安装版本："
+                idx=1
+
+                # 展示编译版
+                for p in "${src_list[@]}"; do
+                    ver=$(basename "$p" | sed 's/python-//')
+                    echo "  $idx) Python $ver (源码安装)"
+                    ((idx++))
+                done
+
+                # 展示APT版
+                for p in "${clean_apt_list[@]}"; do
+                    if [ -n "$p" ]; then
+                        echo "  $idx) $p (APT 安装)"
+                        ((idx++))
+                    fi
+                done
+                echo "  0) 取消"
+
+                read -p "请输入序号卸载: " selection
+
+                if [[ "$selection" =~ ^[0-9]+$ ]] && [ "$selection" -gt 0 ]; then
+                    src_len=${#src_list[@]}
+                    if [ "$selection" -le "$src_len" ]; then
+                        # === 命中编译版 ===
+                        target_path=${src_list[$((selection-1))]}
+                        ver_num=$(basename "$target_path" | sed 's/python-//')
+                        echo "正在卸载 Python $ver_num (源码安装)..."
+
+                        # 先从 alternatives 中移除，再删除目录和软链
+                        update-alternatives --remove python "$target_path/bin/python${ver_num%.*}" >/dev/null 2>&1 || true
+
+                        rm -rf "$target_path"
+                        rm -f "/usr/bin/python$ver_num" 2>/dev/null
+                        rm -f "/usr/bin/pip$ver_num" 2>/dev/null
+
+                        echo "卸载完成。"
+                    elif [ "$selection" -le "$total_count" ]; then
+                        # === 命中APT版 ===
+                        real_idx=$((selection - src_len - 1))
+                        if [ "$real_idx" -ge 0 ] && [ "$real_idx" -lt "${#clean_apt_list[@]}" ]; then
+                            pkg_name=${clean_apt_list[$real_idx]}
+                            echo "即将使用 apt 卸载 $pkg_name ..."
+                            echo "注意：此操作可能影响系统中的其他软件。"
+                            # 不加 -y，防止误删，让用户自行确认
+                            apt-get remove "$pkg_name"
+                            echo "apt 操作结束。"
+                        else
+                            echo "序号无效。"
+                        fi
+                    else
+                        echo "序号无效。"
+                    fi
+                elif [ "$selection" -eq 0 ] 2>/dev/null; then
+                    echo "已取消。"
+                else
+                    echo "无效输入。"
+                fi
+            fi
+            ;;
         0)
-            echo "再见！"
+            echo "已退出。"
             exit 0
             ;;
-            
         *)
-            echo "无效输入，请重试。"
+            echo "无效选择。"
             ;;
     esac
 
     echo ""
-    read -n 1 -s -r -p "按任意键返回主菜单..."
+    read -n 1 -s -r -p "按任意键返回菜单..."
 done
