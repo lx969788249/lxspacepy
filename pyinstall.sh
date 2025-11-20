@@ -113,7 +113,7 @@ while true; do
       Python 版本管理器
 ================================
     1. 安装 python
-    2. 查看已安装python
+    2. 查看已安装 python
     3. 修改默认 python
     4. 卸载 python
     0. 退出
