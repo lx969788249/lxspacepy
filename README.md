@@ -22,12 +22,6 @@ curl -O https://gh-proxy.com/raw.githubusercontent.com/lx969788249/lxspacepy/mas
 
 运行脚本后，你将看到一些提示信息，例如选择要安装的 Python 版本、安装目录等。按照提示进行操作即可完成安装。
 
-## 注意事项
-
-- 运行脚本需要在 Linux 终端下执行。
-- 需要根据当前系统的架构选择合适的版本，否则可能会安装失败。
-- 如果您已经安装了 Python，请不要重复安装。
-
 ## 其他
 
 个人网站：[lxspace.top](https://lxspace.top/)
