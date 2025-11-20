@@ -60,20 +60,24 @@ function is_exists_python() {
     fi
 }
 
+# --- 修改开始 ---
+# 移除了“请输入你的选择”这行，只保留选项列表
 cat << END
     欢迎使用python管理器。请选择你需要的使用的功能
     1.安装python(可选择版本:https://www.python.org/ftp/python)
     2.查看已经安装的python
     3.修改默认python
     4.卸载python
-    请输入你的选择：
 END
 
-read parameter
+# 使用 read -p 来显示提示符，这样光标就不会换行
+read -p "    请输入你的选择：" parameter
+# --- 修改结束 ---
+
 echo "你选择了:$parameter"
 if [ "$parameter" -eq "1" ];then
-    echo "请输入版本号(例子: 3.9.9)"
-    read version
+    # 这里也可以优化一下，让输入版本号也在同一行
+    read -p "请输入版本号(例子: 3.9.9): " version
     #检测有效性
     is_exists_arg $version
     v=(${version//./ })
