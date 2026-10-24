@@ -11,12 +11,6 @@ PYTHON="/usr/local/bin/python$VERSION"
 DEFAULT_PYTHON="/usr/local/bin/python"
 export JOBS="${JOBS:-2}"
 
-if command -v python3 >/dev/null 2>&1; then
-    SYSTEM_PYTHON_BEFORE="$(command -v python3):$(python3 --version 2>&1)"
-else
-    SYSTEM_PYTHON_BEFORE="absent"
-fi
-
 cleanup() {
     if [[ -d "$PREFIX" ]]; then
         bash "$SCRIPT" uninstall "$VERSION" --yes >/dev/null 2>&1 || true
@@ -35,6 +29,13 @@ bash "$SCRIPT" list
 
 printf '==> 验证重复安装是幂等操作\n'
 bash "$SCRIPT" install "$VERSION" --sha256 "$SHA256"
+
+# Arch 安装依赖时可能合法升级系统 Python；从切换前开始检查脚本没有改动它。
+if command -v python3 >/dev/null 2>&1; then
+    SYSTEM_PYTHON_BEFORE="$(command -v python3):$(python3 --version 2>&1)"
+else
+    SYSTEM_PYTHON_BEFORE="absent"
+fi
 
 printf '==> 切换默认 python\n'
 bash "$SCRIPT" switch "$VERSION"
