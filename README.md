@@ -35,7 +35,7 @@ CI 覆盖 Ubuntu、Debian、Fedora、Arch Linux、openSUSE 和 Alpine 的单元�
 - 能访问 `https://www.python.org`
 - `PATH` 中 `/usr/local/bin` 应位于 `/usr/bin` 之前，才能直接使用切换后的 `python`
 
-缺少的编译依赖会通过系统包管理器安装。
+缺少的编译依赖会通过系统包管理器安装。Arch Linux 不支持部分升级，因此安装依赖时会通过 `pacman -Syu` 同步数据库并升级系统软件包。
 
 ## 快速开始
 

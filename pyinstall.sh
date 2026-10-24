@@ -232,9 +232,11 @@ install_dependencies() {
             yum install -y "${missing[@]}"
             ;;
         pacman)
-            pacman -S --noconfirm --needed "${missing[@]}"
+            # Arch 不支持部分升级；同步数据库时必须同时升级系统。
+            pacman -Syu --noconfirm --needed "${missing[@]}"
             ;;
         zypper)
+            zypper --non-interactive refresh
             zypper --non-interactive install --no-recommends "${missing[@]}"
             ;;
         apk)

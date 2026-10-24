@@ -44,7 +44,7 @@ jobs:
           - { name: Debian 12, image: debian:12, setup: ':' }
           - { name: Fedora 42, image: fedora:42, setup: ':' }
           - { name: Arch Linux, image: archlinux:latest, setup: ':' }
-          - { name: openSUSE Leap 15.6, image: opensuse/leap:15.6, setup: ':' }
+          - { name: openSUSE Leap 16.0, image: opensuse/leap:16.0, setup: ':' }
           - { name: Alpine 3.21, image: alpine:3.21, setup: 'apk add --no-cache bash' }
     steps:
       - uses: actions/checkout@v4
@@ -69,7 +69,7 @@ jobs:
           - { name: Debian 12, image: debian:12, setup: ':' }
           - { name: Fedora 42, image: fedora:42, setup: ':' }
           - { name: Arch Linux, image: archlinux:latest, setup: ':' }
-          - { name: openSUSE Leap 15.6, image: opensuse/leap:15.6, setup: ':' }
+          - { name: openSUSE Leap 16.0, image: opensuse/leap:16.0, setup: ':' }
           - { name: Alpine 3.21, image: alpine:3.21, setup: 'apk add --no-cache bash' }
     steps:
       - uses: actions/checkout@v4
