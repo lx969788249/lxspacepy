@@ -1,0 +1,83 @@
+name: test
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: test-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  static:
+    name: ShellCheck and unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install ShellCheck
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends shellcheck
+      - name: Check syntax and static analysis
+        run: |
+          bash -n pyinstall.sh tests/test.sh tests/integration.sh
+          shellcheck -x pyinstall.sh tests/test.sh tests/integration.sh
+      - name: Run unit tests
+        run: bash tests/test.sh
+
+  unit-linux:
+    name: Unit / ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: Ubuntu 22.04, image: ubuntu:22.04, setup: ':' }
+          - { name: Ubuntu 24.04, image: ubuntu:24.04, setup: ':' }
+          - { name: Debian 12, image: debian:12, setup: ':' }
+          - { name: Fedora 42, image: fedora:42, setup: ':' }
+          - { name: Arch Linux, image: archlinux:latest, setup: ':' }
+          - { name: openSUSE Leap 15.6, image: opensuse/leap:15.6, setup: ':' }
+          - { name: Alpine 3.21, image: alpine:3.21, setup: 'apk add --no-cache bash' }
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run unit tests in container
+        run: |
+          docker run --rm \
+            --volume "$GITHUB_WORKSPACE:/work:ro" \
+            --workdir /work \
+            "${{ matrix.image }}" \
+            sh -c '${{ matrix.setup }} && bash tests/test.sh'
+
+  compile:
+    name: Compile / ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: Ubuntu 22.04, image: ubuntu:22.04, setup: ':' }
+          - { name: Ubuntu 24.04, image: ubuntu:24.04, setup: ':' }
+          - { name: Debian 12, image: debian:12, setup: ':' }
+          - { name: Fedora 42, image: fedora:42, setup: ':' }
+          - { name: Arch Linux, image: archlinux:latest, setup: ':' }
+          - { name: openSUSE Leap 15.6, image: opensuse/leap:15.6, setup: ':' }
+          - { name: Alpine 3.21, image: alpine:3.21, setup: 'apk add --no-cache bash' }
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and test Python in container
+        run: |
+          docker run --rm \
+            --volume "$GITHUB_WORKSPACE:/work:ro" \
+            --workdir /work \
+            --env JOBS=2 \
+            "${{ matrix.image }}" \
+            sh -c '${{ matrix.setup }} && bash tests/integration.sh /work/pyinstall.sh'
